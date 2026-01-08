@@ -22,8 +22,8 @@ Deploy [SuiteCRM](https://suitecrm.com/) - the open-source CRM - on OpenShift wi
 │  │                  Your Project/Namespace                 │ │
 │  │                                                         │ │
 │  │   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐  │ │
-│  │   │  SuiteCRM   │──▶│   MariaDB   │   │    Redis    │  │ │
-│  │   │  (nginx +   │   │   (10.11)   │   │  (sessions  │  │ │
+│  │   │  SuiteCRM   │──▶│   MariaDB   │   │   Redis 8   │  │ │
+│  │   │  (nginx +   │   │   (11.8)    │   │  (sessions  │  │ │
 │  │   │  PHP-FPM)   │──▶│             │   │  + cache)   │  │ │
 │  │   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘  │ │
 │  │          │                 │                 │         │ │
@@ -158,7 +158,9 @@ Then update `SUITECRM_IMAGE` in `deploy-suitecrm.sh`.
 - **Web Server**: nginx (port 8080)
 - **PHP**: 8.3 from Remi repository
 - **Process Manager**: supervisord (manages nginx + PHP-FPM)
-- **Extensions**: gd, mbstring, xml, zip, curl, intl, bcmath, opcache, mysqlnd, imap, ldap, soap, apcu, redis, sodium
+- **Database**: MariaDB 11.8 (`quay.io/fedora/mariadb-118`)
+- **Cache**: Redis 8 Alpine (`docker.io/redis:8-alpine`)
+- **PHP Extensions**: gd, mbstring, xml, zip, curl, intl, bcmath, opcache, mysqlnd, imap, ldap, soap, apcu, redis, sodium
 
 ## Red Hat Developer Sandbox
 

@@ -1,20 +1,20 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# SuiteCRM Container for OpenShift
+# SuiteCRM 8 Container for OpenShift
 # Base: CentOS Stream 9 + Remi PHP 8.3 + nginx + PHP-FPM
 # Runs as non-root, OpenShift restricted SCC compatible
 # ═══════════════════════════════════════════════════════════════════════════════
 
 FROM quay.io/centos/centos:stream9
 
-LABEL maintainer="Ryan <ryan@redhat.com>" \
-      description="SuiteCRM 7.15 for OpenShift with nginx + PHP-FPM" \
-      version="7.15.0" \
+LABEL maintainer="Ryan Nix <ryan.nix@gmail.com>" \
+      description="SuiteCRM 8.9 for OpenShift with nginx + PHP-FPM" \
+      version="8.9.1" \
       io.k8s.description="SuiteCRM - Open Source CRM" \
-      io.k8s.display-name="SuiteCRM 7.15" \
+      io.k8s.display-name="SuiteCRM 8.9" \
       io.openshift.expose-services="8080:http" \
-      io.openshift.tags="crm,suitecrm,php,nginx"
+      io.openshift.tags="crm,suitecrm,php,nginx,symfony"
 
-ARG SUITECRM_VERSION=7.15.0
+ARG SUITECRM_VERSION=8.9.1
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Environment Variables
@@ -63,22 +63,31 @@ RUN dnf -y install epel-release && \
     rm -rf /var/cache/dnf
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Download and install SuiteCRM
+# Download and install SuiteCRM 8
 # ─────────────────────────────────────────────────────────────────────────────
 WORKDIR /tmp
 
-RUN curl -fSL "https://suitecrm.com/files/147/SuiteCRM-7.15/${SUITECRM_VERSION}/SuiteCRM-${SUITECRM_VERSION}.zip" \
-        -o suitecrm.zip || \
-    curl -fSL "https://github.com/salesagility/SuiteCRM/releases/download/v${SUITECRM_VERSION}/SuiteCRM-${SUITECRM_VERSION}.zip" \
-        -o suitecrm.zip && \
-    unzip -q suitecrm.zip && \
+# Download from GitHub releases
+RUN curl -fSL -o suitecrm.zip \
+        "https://github.com/SuiteCRM/SuiteCRM-Core/releases/download/v${SUITECRM_VERSION}/SuiteCRM-${SUITECRM_VERSION}.zip" && \
+    mkdir -p /tmp/suitecrm-extract && \
+    unzip -q suitecrm.zip -d /tmp/suitecrm-extract && \
+    ls -la /tmp/suitecrm-extract && \
     rm -rf /var/www/html && \
     mkdir -p /var/www/html && \
-    mv SuiteCRM-${SUITECRM_VERSION}/* /var/www/html/ && \
-    rm -rf suitecrm.zip SuiteCRM-${SUITECRM_VERSION}
+    # Find the actual content directory and move it
+    cd /tmp/suitecrm-extract && \
+    SRCDIR=$(find . -maxdepth 1 -type d ! -name '.' | head -1) && \
+    if [ -n "$SRCDIR" ] && [ -d "$SRCDIR/public" ]; then \
+        cp -a "$SRCDIR"/. /var/www/html/; \
+    else \
+        cp -a . /var/www/html/; \
+    fi && \
+    rm -rf /tmp/suitecrm.zip /tmp/suitecrm-extract
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configure nginx for non-root operation
+# SuiteCRM 8 serves from public/ directory (Symfony)
 # ─────────────────────────────────────────────────────────────────────────────
 RUN mkdir -p /var/lib/nginx/tmp/client_body \
              /var/lib/nginx/tmp/proxy \
@@ -132,13 +141,15 @@ http {
 }
 NGINXCONF
 
-# nginx server block
+# nginx server block - note: document root is public/ for SuiteCRM 8
 RUN cat > /etc/nginx/conf.d/default.conf <<'SERVERCONF'
 server {
     listen 8080 default_server;
     listen [::]:8080 default_server;
     server_name _;
-    root /var/www/html;
+    
+    # SuiteCRM 8 serves from public directory (Symfony)
+    root /var/www/html/public;
     index index.php index.html;
 
     add_header X-Content-Type-Options "nosniff" always;
@@ -151,44 +162,61 @@ server {
         add_header Content-Type text/plain;
     }
 
+    # Deny access to sensitive files
     location ~ /\. { deny all; }
-    location ~* \.(sql|log|ini|sh|yml|yaml|lock|md|txt)$ { deny all; }
-
-    location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
+    location ~ ^/(\.env|composer\.(json|lock)|symfony\.lock) { deny all; }
+    
+    # Static assets with caching
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot|map)$ {
         expires 30d;
         add_header Cache-Control "public, immutable";
         access_log off;
         try_files $uri =404;
     }
 
-    location ^~ /Api/ {
-        try_files $uri $uri/ /Api/index.php?$args;
+    # Legacy module - allow all PHP files in legacy directory
+    location ^~ /legacy/ {
+        try_files $uri $uri/ /legacy/index.php?$args;
+        
         location ~ \.php$ {
-            fastcgi_split_path_info ^(.+\.php)(/.+)$;
             fastcgi_pass 127.0.0.1:9000;
-            fastcgi_index index.php;
-            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-            fastcgi_param PATH_INFO $fastcgi_path_info;
+            fastcgi_split_path_info ^(.+\.php)(/.*)$;
             include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            fastcgi_param DOCUMENT_ROOT $document_root;
             fastcgi_read_timeout 300;
+            fastcgi_buffer_size 128k;
+            fastcgi_buffers 256 16k;
+            fastcgi_busy_buffers_size 256k;
         }
     }
 
-    location / {
-        try_files $uri $uri/ /index.php?$args;
+    # API routes
+    location ^~ /api/ {
+        try_files $uri /index.php$is_args$args;
     }
 
-    location ~ \.php$ {
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+    # Symfony front controller (handles Angular routes too)
+    location / {
+        try_files $uri /index.php$is_args$args;
+    }
+
+    # PHP handling for index.php and install.php
+    location ~ ^/(index|install)\.php(/|$) {
         fastcgi_pass 127.0.0.1:9000;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_split_path_info ^(.+\.php)(/.*)$;
         include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param DOCUMENT_ROOT $document_root;
         fastcgi_read_timeout 300;
         fastcgi_buffer_size 128k;
         fastcgi_buffers 256 16k;
         fastcgi_busy_buffers_size 256k;
+    }
+
+    # Block direct access to other PHP files (outside legacy)
+    location ~ \.php$ {
+        return 404;
     }
 }
 SERVERCONF
@@ -243,7 +271,7 @@ max_file_uploads = 20
 display_errors = Off
 log_errors = On
 error_log = /var/log/php-fpm/php_errors.log
-error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT & ~E_NOTICE & ~E_WARNING
 session.save_handler = files
 session.save_path = "/tmp/sessions"
 session.gc_maxlifetime = 3600
@@ -258,7 +286,7 @@ realpath_cache_ttl = 600
 opcache.enable = 1
 opcache.memory_consumption = 256
 opcache.interned_strings_buffer = 16
-opcache.max_accelerated_files = 10000
+opcache.max_accelerated_files = 20000
 opcache.revalidate_freq = 60
 opcache.fast_shutdown = 1
 apc.enabled = 1
@@ -277,7 +305,6 @@ RUN mkdir -p /var/log/supervisor
 RUN cat > /etc/supervisord.conf <<'SUPERVISOR'
 [supervisord]
 nodaemon=true
-user=root
 logfile=/var/log/supervisor/supervisord.log
 pidfile=/run/supervisord.pid
 childlogdir=/var/log/supervisor
@@ -314,8 +341,8 @@ RUN cat > /entrypoint.sh <<'ENTRYPOINT'
 set -e
 
 echo "============================================"
-echo "SuiteCRM Container Starting..."
-echo "Version: ${SUITECRM_VERSION:-7.15.0}"
+echo "SuiteCRM 8 Container Starting..."
+echo "Version: ${SUITECRM_VERSION:-8.9.1}"
 echo "Running as UID: $(id -u), GID: $(id -g)"
 echo "============================================"
 
@@ -329,18 +356,21 @@ export SITE_URL="${SITE_URL:-http://localhost:8080}"
 export REDIS_HOST="${REDIS_HOST:-redis}"
 export REDIS_PORT="${REDIS_PORT:-6379}"
 
-DOCUMENT_ROOT="/var/www/html"
-CONFIG_OVERRIDE="${DOCUMENT_ROOT}/config_override.php"
+SUITECRM_ROOT="/var/www/html"
 
 # Fix permissions
-chmod -R g+rwX ${DOCUMENT_ROOT}/cache ${DOCUMENT_ROOT}/custom ${DOCUMENT_ROOT}/upload ${DOCUMENT_ROOT}/modules 2>/dev/null || true
-mkdir -p /tmp/sessions && chmod 1777 /tmp/sessions
+chmod -R g+rwX ${SUITECRM_ROOT}/cache 2>/dev/null || true
+chmod -R g+rwX ${SUITECRM_ROOT}/public/legacy/cache 2>/dev/null || true
+chmod -R g+rwX ${SUITECRM_ROOT}/public/legacy/custom 2>/dev/null || true
+chmod -R g+rwX ${SUITECRM_ROOT}/public/legacy/upload 2>/dev/null || true
+chmod -R g+rwX ${SUITECRM_ROOT}/public/legacy/modules 2>/dev/null || true
+chmod -R g+rwX ${SUITECRM_ROOT}/logs 2>/dev/null || true
+mkdir -p /tmp/sessions 2>/dev/null || true
 
-# Configure Redis sessions if available
+# Note: Redis session configuration disabled for SuiteCRM 8
+# Symfony handles sessions differently - configure via .env if needed
 if php -r "\$r=new Redis(); try{\$r->connect('${REDIS_HOST}',${REDIS_PORT},2);\$r->ping();exit(0);}catch(Exception \$e){exit(1);}" 2>/dev/null; then
-    echo "==> Redis available - configuring sessions..."
-    sed -i "s|php_admin_value\[session.save_handler\].*|php_admin_value[session.save_handler] = redis|" /etc/php-fpm.d/www.conf
-    sed -i "s|php_admin_value\[session.save_path\].*|php_admin_value[session.save_path] = \"tcp://${REDIS_HOST}:${REDIS_PORT}\"|" /etc/php-fpm.d/www.conf
+    echo "==> Redis available (sessions handled by Symfony, Redis available for cache)"
 fi
 
 # Wait for database
@@ -354,23 +384,31 @@ for i in $(seq 1 60); do
     sleep 2
 done
 
-# Create config override
-cat > "${CONFIG_OVERRIDE}" <<EOF
-<?php
-\$sugar_config['dbconfig']['db_host_name'] = '${DB_HOST}';
-\$sugar_config['dbconfig']['db_port'] = '${DB_PORT}';
-\$sugar_config['dbconfig']['db_name'] = '${DB_NAME}';
-\$sugar_config['dbconfig']['db_user_name'] = '${DB_USER}';
-\$sugar_config['dbconfig']['db_password'] = '${DB_PASSWORD}';
-\$sugar_config['site_url'] = '${SITE_URL}';
-\$sugar_config['host_name'] = parse_url('${SITE_URL}', PHP_URL_HOST);
-\$sugar_config['session_dir'] = '/tmp/sessions';
-\$sugar_config['cache_dir'] = 'cache/';
-\$sugar_config['upload_dir'] = 'upload/';
-\$sugar_config['logger']['level'] = 'error';
+# Create/update .env.local for Symfony configuration
+cat > "${SUITECRM_ROOT}/.env.local" <<EOF
+# Generated by container entrypoint
+DATABASE_URL=mysql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
 EOF
 
-chmod 644 "${CONFIG_OVERRIDE}" 2>/dev/null || true
+chmod 644 "${SUITECRM_ROOT}/.env.local" 2>/dev/null || true
+
+# Add trusted referer to config_override.php
+SITE_HOST=$(echo "${SITE_URL}" | sed -e 's|https://||' -e 's|http://||' -e 's|/.*||')
+LEGACY_CONFIG_OVERRIDE="${SUITECRM_ROOT}/public/legacy/config_override.php"
+
+if [ -n "${SITE_HOST}" ]; then
+    echo "==> Configuring trusted referer: ${SITE_HOST}"
+    
+    # Create config_override.php if it doesn't exist
+    if [ ! -f "${LEGACY_CONFIG_OVERRIDE}" ]; then
+        echo '<?php' > "${LEGACY_CONFIG_OVERRIDE}"
+    fi
+    
+    # Add referer if not already present
+    if ! grep -q "${SITE_HOST}" "${LEGACY_CONFIG_OVERRIDE}" 2>/dev/null; then
+        echo "\$sugar_config['http_referer']['list'][] = '${SITE_HOST}';" >> "${LEGACY_CONFIG_OVERRIDE}"
+    fi
+fi
 
 echo "============================================"
 echo "Starting nginx + PHP-FPM via supervisor..."
@@ -391,10 +429,24 @@ RUN chgrp -R 0 /var/www/html && chmod -R g=u /var/www/html && \
     chgrp -R 0 /run/nginx && chmod -R g=u /run/nginx && \
     chgrp -R 0 /var/log/php-fpm && chmod -R g=u /var/log/php-fpm && \
     chgrp -R 0 /run/php-fpm && chmod -R g=u /run/php-fpm && \
+    chgrp -R 0 /etc/php-fpm.d && chmod -R g=u /etc/php-fpm.d && \
     chgrp -R 0 /var/log/supervisor && chmod -R g=u /var/log/supervisor && \
     chgrp 0 /entrypoint.sh && chmod g=u /entrypoint.sh && \
-    mkdir -p /var/www/html/cache /var/www/html/custom /var/www/html/upload && \
-    chmod -R g+rwX /var/www/html/cache /var/www/html/custom /var/www/html/upload && \
+    # Ensure config files exist and are writable
+    touch /var/www/html/public/legacy/config_override.php && \
+    echo '<?php' > /var/www/html/public/legacy/config_override.php && \
+    chmod 666 /var/www/html/public/legacy/config_override.php && \
+    # Ensure writable directories for SuiteCRM 8
+    mkdir -p /var/www/html/cache \
+             /var/www/html/public/legacy/cache \
+             /var/www/html/public/legacy/custom \
+             /var/www/html/public/legacy/upload \
+             /var/www/html/logs && \
+    chmod -R g+rwX /var/www/html/cache \
+                   /var/www/html/public/legacy/cache \
+                   /var/www/html/public/legacy/custom \
+                   /var/www/html/public/legacy/upload \
+                   /var/www/html/logs && \
     mkdir -p /tmp/sessions && chmod 1777 /tmp/sessions
 
 # ─────────────────────────────────────────────────────────────────────────────

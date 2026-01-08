@@ -6,7 +6,7 @@
 # This script deploys SuiteCRM 7.15 with MariaDB and Redis on OpenShift
 # Based on the Nextcloud/OpenEMR deployment pattern
 #
-# Author: Ryan Nixon
+# Author: Ryan Nix
 # Version: 1.0
 ##############################################################################
 
@@ -20,9 +20,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-SUITECRM_IMAGE="quay.io/ryan_nix/suitecrm-openshift:7.15.0"
-MARIADB_IMAGE="registry.redhat.io/rhel9/mariadb-1011:latest"
-REDIS_IMAGE="docker.io/bitnami/redis:7.4"
+SUITECRM_IMAGE="quay.io/ryan_nix/suitecrm-openshift:8.9.1"
+MARIADB_IMAGE="quay.io/fedora/mariadb-118"
+REDIS_IMAGE="docker.io/redis:8-alpine"
 
 # Storage configuration
 DB_STORAGE_SIZE="10Gi"
@@ -112,13 +112,6 @@ detect_project() {
     fi
     
     print_success "Using current project: $PROJECT_NAME"
-    
-    # Get the apps domain for route
-    APPS_DOMAIN=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null || echo "apps.example.com")
-    SUITECRM_ROUTE="suitecrm-${PROJECT_NAME}.${APPS_DOMAIN}"
-    SITE_URL="https://${SUITECRM_ROUTE}"
-    
-    print_info "Route will be: ${SUITECRM_ROUTE}"
 }
 
 ##############################################################################
@@ -185,10 +178,7 @@ spec:
             - name: redis
               containerPort: 6379
               protocol: TCP
-          env:
-            - name: ALLOW_EMPTY_PASSWORD
-              value: "yes"
-          args:
+          command:
             - redis-server
             - --appendonly
             - "yes"
@@ -456,6 +446,56 @@ spec:
       storage: ${SUITECRM_STORAGE_SIZE}
 EOF
 
+    print_info "Creating SuiteCRM Service..."
+    cat <<EOF | oc apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: suitecrm
+  labels:
+    app: suitecrm
+    component: application
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    app: suitecrm
+    component: application
+EOF
+
+    print_info "Creating SuiteCRM Route..."
+    cat <<EOF | oc apply -f -
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: suitecrm
+  labels:
+    app: suitecrm
+    component: application
+  annotations:
+    haproxy.router.openshift.io/timeout: 300s
+spec:
+  to:
+    kind: Service
+    name: suitecrm
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+EOF
+
+    # Get the auto-generated route URL
+    sleep 2
+    ROUTE_HOST=$(oc get route suitecrm -o jsonpath='{.spec.host}' 2>/dev/null)
+    SITE_URL="https://${ROUTE_HOST}"
+    print_info "Route URL: ${SITE_URL}"
+
     print_info "Creating SuiteCRM Deployment..."
     cat <<EOF | oc apply -f -
 apiVersion: apps/v1
@@ -560,13 +600,13 @@ spec:
               value: "${SITE_URL}"
           volumeMounts:
             - name: suitecrm-data
-              mountPath: /var/www/html/upload
+              mountPath: /var/www/html/public/legacy/upload
               subPath: upload
             - name: suitecrm-data
               mountPath: /var/www/html/cache
               subPath: cache
             - name: suitecrm-data
-              mountPath: /var/www/html/custom
+              mountPath: /var/www/html/public/legacy/custom
               subPath: custom
           resources:
             requests:
@@ -591,51 +631,6 @@ spec:
         - name: suitecrm-data
           persistentVolumeClaim:
             claimName: suitecrm-data
-EOF
-
-    print_info "Creating SuiteCRM Service..."
-    cat <<EOF | oc apply -f -
-apiVersion: v1
-kind: Service
-metadata:
-  name: suitecrm
-  labels:
-    app: suitecrm
-    component: application
-spec:
-  type: ClusterIP
-  ports:
-    - name: http
-      port: 8080
-      targetPort: http
-  selector:
-    app: suitecrm
-    component: application
-EOF
-
-    print_info "Creating SuiteCRM Route..."
-    cat <<EOF | oc apply -f -
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: suitecrm
-  labels:
-    app: suitecrm
-    component: application
-  annotations:
-    haproxy.router.openshift.io/timeout: 300s
-spec:
-  host: ${SUITECRM_ROUTE}
-  to:
-    kind: Service
-    name: suitecrm
-    weight: 100
-  port:
-    targetPort: http
-  tls:
-    termination: edge
-    insecureEdgeTerminationPolicy: Redirect
-  wildcardPolicy: None
 EOF
 
     print_success "SuiteCRM deployed!"
@@ -689,7 +684,7 @@ spec:
                 - -c
                 - |
                   cd /var/www/html
-                  php -f cron.php > /dev/null 2>&1
+                  php bin/console schedulers:run > /dev/null 2>&1
               env:
                 - name: DB_HOST
                   value: "mariadb"
@@ -716,13 +711,13 @@ spec:
                   value: "6379"
               volumeMounts:
                 - name: suitecrm-data
-                  mountPath: /var/www/html/upload
+                  mountPath: /var/www/html/public/legacy/upload
                   subPath: upload
                 - name: suitecrm-data
                   mountPath: /var/www/html/cache
                   subPath: cache
                 - name: suitecrm-data
-                  mountPath: /var/www/html/custom
+                  mountPath: /var/www/html/public/legacy/custom
                   subPath: custom
               resources:
                 requests:
@@ -747,7 +742,7 @@ EOF
 display_summary() {
     print_header "Deployment Summary"
     
-    ROUTE_URL=$(oc get route suitecrm -o jsonpath='{.spec.host}' 2>/dev/null || echo "${SUITECRM_ROUTE}")
+    ROUTE_URL=$(oc get route suitecrm -o jsonpath='{.spec.host}' 2>/dev/null)
     
     echo ""
     echo "SuiteCRM has been deployed successfully!"
@@ -762,8 +757,8 @@ display_summary() {
     echo "  Password: ${DB_PASSWORD}"
     echo ""
     echo "Next Steps:"
-    echo "  1. Navigate to: https://${ROUTE_URL}/install.php"
-    echo "  2. Complete the SuiteCRM setup wizard"
+    echo "  1. Navigate to: https://${ROUTE_URL}"
+    echo "  2. Complete the SuiteCRM 8 setup wizard"
     echo "  3. Use the database credentials above when prompted"
     echo ""
     echo "Useful Commands:"
