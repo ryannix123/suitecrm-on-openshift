@@ -8,13 +8,13 @@ FROM quay.io/centos/centos:stream9
 
 LABEL maintainer="Ryan Nix <ryan.nix@gmail.com>" \
       description="SuiteCRM 8.9 for OpenShift with nginx + PHP-FPM" \
-      version="8.9.1" \
+      version="8.9.2" \
       io.k8s.description="SuiteCRM - Open Source CRM" \
       io.k8s.display-name="SuiteCRM 8.9" \
       io.openshift.expose-services="8080:http" \
       io.openshift.tags="crm,suitecrm,php,nginx,symfony"
 
-ARG SUITECRM_VERSION=8.9.1
+ARG SUITECRM_VERSION=8.9.2
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Environment Variables
@@ -83,13 +83,6 @@ RUN curl -fSL -o suitecrm.zip \
     rm -rf /tmp/suitecrm.zip /tmp/suitecrm-extract
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Copy database schema for auto-installation
-# ─────────────────────────────────────────────────────────────────────────────
-RUN mkdir -p /opt/suitecrm
-COPY suitecrm-schema.sql /opt/suitecrm/
-COPY suitecrm-seed-data.sql /opt/suitecrm/
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Custom vCard upload fix (increase limit from 30KB to 100MB)
 # ─────────────────────────────────────────────────────────────────────────────
 RUN mkdir -p /var/www/html/public/legacy/custom/include/MVC/View/tpls && \
@@ -148,7 +141,6 @@ RUN chgrp -R 0 /var/www/html && chmod -R g=u /var/www/html && \
     chgrp -R 0 /run/php-fpm && chmod -R g=u /run/php-fpm && \
     chgrp -R 0 /etc/php-fpm.d && chmod -R g=u /etc/php-fpm.d && \
     chgrp -R 0 /var/log/supervisor && chmod -R g=u /var/log/supervisor && \
-    chgrp -R 0 /opt/suitecrm && chmod -R g=u /opt/suitecrm && \
     chgrp 0 /entrypoint.sh && chmod g=u /entrypoint.sh && \
     touch /var/www/html/public/legacy/config_override.php && \
     echo '<?php' > /var/www/html/public/legacy/config_override.php && \

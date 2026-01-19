@@ -20,7 +20,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-SUITECRM_IMAGE="quay.io/ryan_nix/suitecrm-openshift:8.9.1"
+SUITECRM_IMAGE="quay.io/ryan_nix/suitecrm-openshift:8.9.2"
 MARIADB_IMAGE="quay.io/fedora/mariadb-118"
 REDIS_IMAGE="docker.io/redis:8-alpine"
 
