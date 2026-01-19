@@ -3,11 +3,11 @@
 ##############################################################################
 # SuiteCRM on OpenShift - Deployment Script
 # 
-# This script deploys SuiteCRM 7.15 with MariaDB and Redis on OpenShift
-# Based on the Nextcloud/OpenEMR deployment pattern
+# This script deploys SuiteCRM 8 with MariaDB and Redis on OpenShift
+# Includes auto-installation via CLI installer
 #
 # Author: Ryan Nix
-# Version: 1.0
+# Version: 2.0
 ##############################################################################
 
 set -e
@@ -34,6 +34,10 @@ DB_NAME="suitecrm"
 DB_USER="suitecrm"
 DB_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
 DB_ROOT_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
+
+# Admin configuration
+ADMIN_USER="admin"
+ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | head -c 16)"
 
 ##############################################################################
 # Helper Functions
@@ -146,7 +150,10 @@ metadata:
   name: redis
   labels:
     app: suitecrm
+    app.kubernetes.io/part-of: suitecrm
     component: cache
+  annotations:
+    app.openshift.io/runtime: redis
 spec:
   replicas: 1
   strategy:
@@ -308,7 +315,10 @@ metadata:
   name: mariadb
   labels:
     app: suitecrm
+    app.kubernetes.io/part-of: suitecrm
     component: database
+  annotations:
+    app.openshift.io/runtime: mariadb
 spec:
   replicas: 1
   strategy:
@@ -504,7 +514,10 @@ metadata:
   name: suitecrm
   labels:
     app: suitecrm
+    app.kubernetes.io/part-of: suitecrm
     component: application
+  annotations:
+    app.openshift.io/runtime: php
 spec:
   replicas: 1
   strategy:
@@ -598,6 +611,10 @@ spec:
               value: "6379"
             - name: SITE_URL
               value: "${SITE_URL}"
+            - name: ADMIN_USER
+              value: "${ADMIN_USER}"
+            - name: ADMIN_PASSWORD
+              value: "${ADMIN_PASSWORD}"
           volumeMounts:
             - name: suitecrm-data
               mountPath: /var/www/html/public/legacy/upload
@@ -608,6 +625,9 @@ spec:
             - name: suitecrm-data
               mountPath: /var/www/html/public/legacy/custom
               subPath: custom
+            - name: suitecrm-data
+              mountPath: /mnt/suitecrm-config
+              subPath: config
           resources:
             requests:
               cpu: 250m
@@ -651,6 +671,7 @@ metadata:
   name: suitecrm-scheduler
   labels:
     app: suitecrm
+    app.kubernetes.io/part-of: suitecrm
     component: scheduler
 spec:
   schedule: "* * * * *"
@@ -683,8 +704,12 @@ spec:
                 - /bin/bash
                 - -c
                 - |
+                  # Create .env.local for database connectivity
+                  cat > /var/www/html/.env.local <<ENVFILE
+                  DATABASE_URL=mysql://\${DB_USER}:\${DB_PASSWORD}@\${DB_HOST}:\${DB_PORT}/\${DB_NAME}
+                  ENVFILE
                   cd /var/www/html
-                  php bin/console schedulers:run > /dev/null 2>&1
+                  php bin/console schedulers:run 2>&1 || true
               env:
                 - name: DB_HOST
                   value: "mariadb"
@@ -709,16 +734,6 @@ spec:
                   value: "redis"
                 - name: REDIS_PORT
                   value: "6379"
-              volumeMounts:
-                - name: suitecrm-data
-                  mountPath: /var/www/html/public/legacy/upload
-                  subPath: upload
-                - name: suitecrm-data
-                  mountPath: /var/www/html/cache
-                  subPath: cache
-                - name: suitecrm-data
-                  mountPath: /var/www/html/public/legacy/custom
-                  subPath: custom
               resources:
                 requests:
                   cpu: 50m
@@ -726,10 +741,6 @@ spec:
                 limits:
                   cpu: 500m
                   memory: 512Mi
-          volumes:
-            - name: suitecrm-data
-              persistentVolumeClaim:
-                claimName: suitecrm-data
 EOF
 
     print_success "Scheduler CronJob deployed!"
@@ -749,17 +760,16 @@ display_summary() {
     echo ""
     echo "Access URL: https://${ROUTE_URL}"
     echo ""
+    echo "Admin Credentials:"
+    echo "  Username: ${ADMIN_USER}"
+    echo "  Password: ${ADMIN_PASSWORD}"
+    echo ""
     echo "Database Credentials:"
     echo "  Host:     mariadb.${PROJECT_NAME}.svc.cluster.local"
     echo "  Port:     3306"
     echo "  Database: ${DB_NAME}"
     echo "  Username: ${DB_USER}"
     echo "  Password: ${DB_PASSWORD}"
-    echo ""
-    echo "Next Steps:"
-    echo "  1. Navigate to: https://${ROUTE_URL}"
-    echo "  2. Complete the SuiteCRM 8 setup wizard"
-    echo "  3. Use the database credentials above when prompted"
     echo ""
     echo "Useful Commands:"
     echo "  View pods:     oc get pods -l app=suitecrm"
@@ -776,6 +786,10 @@ SuiteCRM Deployment Credentials
 Date: $(date)
 
 Access URL: https://${ROUTE_URL}
+
+Admin Credentials:
+  Username: ${ADMIN_USER}
+  Password: ${ADMIN_PASSWORD}
 
 Database Information:
   Host: mariadb.${PROJECT_NAME}.svc.cluster.local
