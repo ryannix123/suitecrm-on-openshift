@@ -60,7 +60,7 @@ The script will output the admin credentials and URL when complete. Credentials 
 
 | Component | Image | Purpose |
 |-----------|-------|---------|
-| SuiteCRM | `quay.io/ryan_nix/suitecrm-openshift:8.9.1` | CRM application |
+| SuiteCRM | `quay.io/ryan_nix/suitecrm-openshift:8.9.2` | CRM application |
 | MariaDB | `quay.io/fedora/mariadb-118` | Database |
 | Redis | `docker.io/redis:8-alpine` | Session/cache store |
 | Scheduler | CronJob (same image) | Background tasks |
@@ -126,10 +126,10 @@ To build your own image:
 
 ```bash
 # Build for OpenShift (linux/amd64)
-podman build --platform linux/amd64 -t quay.io/your-username/suitecrm-openshift:8.9.1 -f Containerfile .
+podman build --platform linux/amd64 -t quay.io/your-username/suitecrm-openshift:8.9.2 -f Containerfile .
 
 # Push to registry
-podman push quay.io/your-username/suitecrm-openshift:8.9.1
+podman push quay.io/your-username/suitecrm-openshift:8.9.2
 ```
 
 Update `SUITECRM_IMAGE` in `deploy-suitecrm.sh` to use your image.
