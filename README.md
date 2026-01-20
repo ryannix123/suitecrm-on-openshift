@@ -46,7 +46,7 @@ The script will output the admin credentials and URL when complete. Credentials 
 │                   SuiteCRM Pod                           │
 │              nginx + PHP-FPM 8.3                         │
 │                  (Port 8080)                             │
-└──────────┬─────────────────────────────┬────────────────┘
+└──────────┬─────────────────────────────────┬────────────┘
            │                             │
            ▼                             ▼
 ┌──────────────────────┐    ┌──────────────────────┐
@@ -148,6 +148,16 @@ Update `SUITECRM_IMAGE` in `deploy-suitecrm.sh` to use your image.
 | `supervisord.conf` | Process manager configuration |
 
 ## Troubleshooting
+
+### Developer Sandbox scaled down my pods
+
+The Developer Sandbox automatically scales deployments to zero after periods of inactivity. To wake everything back up:
+
+```bash
+oc scale deployment --all --replicas=1 -n $(oc project -q)
+```
+
+Your data is preserved on persistent storage — just wait a minute for the pods to start and the database to become ready.
 
 ### Pod won't start
 

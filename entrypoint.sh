@@ -44,7 +44,7 @@ if [ ! -f "${VCARD_DST}" ] && [ -f "${VCARD_SRC}" ]; then
     echo "==> Installing vCard upload fix (100MB limit)..."
     mkdir -p "$(dirname ${VCARD_DST})"
     sed 's/value="30000"/value="104857600"/' "${VCARD_SRC}" > "${VCARD_DST}"
-    chmod 644 "${VCARD_DST}"
+    chmod 644 "${VCARD_DST}" 2>/dev/null || true
 fi
 
 # Wait for database
@@ -74,11 +74,11 @@ if [ -d "${PERSIST_DIR}" ] && [ -f "${PERSIST_CONFIG}" ]; then
     if grep -q "db_host_name" "${PERSIST_CONFIG}" 2>/dev/null; then
         echo "==> Found persistent config, restoring..."
         cp "${PERSIST_CONFIG}" "${CONFIG_FILE}"
-        chmod 644 "${CONFIG_FILE}"
+        chmod 644 "${CONFIG_FILE}" 2>/dev/null || true
         
         if [ -f "${PERSIST_OVERRIDE}" ]; then
             cp "${PERSIST_OVERRIDE}" "${CONFIG_OVERRIDE}"
-            chmod 644 "${CONFIG_OVERRIDE}"
+            chmod 644 "${CONFIG_OVERRIDE}" 2>/dev/null || true
         fi
         
         INSTALLED=true
