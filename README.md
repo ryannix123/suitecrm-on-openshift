@@ -120,6 +120,90 @@ The SuiteCRM container accepts these environment variables:
 | `suitecrm-data` | 20Gi | Uploads, cache, config, customizations |
 | `redis-data` | 1Gi | Redis persistence |
 
+## Customizations
+
+### What's supported out of the box
+
+This deployment is optimized for **fresh installs, demos, and dev environments**. The following are persisted across restarts via PVC:
+
+| Directory | Persisted | Notes |
+|-----------|-----------|-------|
+| `public/legacy/upload` | ✅ | User uploads, documents |
+| `public/legacy/custom` | ✅ | Studio customizations, views, layouts |
+| `public/legacy/cache` | ✅ | Application cache |
+| `config.php`, `config_override.php` | ✅ | Configuration files |
+
+### What requires a custom image build
+
+SuiteCRM's architecture expects to write to the filesystem at runtime — installing extensions, Module Builder output, composer updates, front-end rebuilds. Containers are designed to be immutable. **These philosophies clash.**
+
+The following are **not persisted** and require building a custom image:
+
+| Directory | Notes |
+|-----------|-------|
+| `/extensions` | SuiteCRM 8 extensions |
+| `public/legacy/modules` (custom) | Module Builder output |
+| `/vendor` | Composer dependencies |
+| Front-end build | Angular app (for extensions with UI components) |
+
+### Building a custom image with extensions
+
+For production deployments with extensions or custom modules:
+
+1. **Fork this repository**
+
+2. **Add your extensions** to the build context:
+   ```
+   extensions/
+   └── your-extension/
+       ├── manifest.yml
+       └── ...
+   ```
+
+3. **Add custom modules** (if using Module Builder):
+   ```
+   custom-modules/
+   └── YourModule/
+       └── ...
+   ```
+
+4. **Update the Containerfile** to copy and build:
+   ```dockerfile
+   # Copy extensions
+   COPY extensions/ /var/www/html/extensions/
+   
+   # Copy custom legacy modules
+   COPY custom-modules/ /var/www/html/public/legacy/modules/
+   
+   # Install composer dependencies (if extensions require them)
+   RUN cd /var/www/html && composer install --no-dev --optimize-autoloader
+   
+   # Rebuild front-end (if extensions have Angular components)
+   RUN cd /var/www/html && yarn install && yarn build
+   ```
+
+5. **Build and push your image**:
+   ```bash
+   podman build --platform linux/amd64 -t quay.io/your-username/suitecrm-custom:8.9.2 .
+   podman push quay.io/your-username/suitecrm-custom:8.9.2
+   ```
+
+6. **Update `deploy-suitecrm.sh`** to use your image:
+   ```bash
+   SUITECRM_IMAGE="quay.io/your-username/suitecrm-custom:8.9.2"
+   ```
+
+### Why this approach?
+
+- **Reproducibility** - Every deployment is identical, built from the same image
+- **CI/CD friendly** - Automate builds via GitHub Actions, Tekton, etc.
+- **Rollback capability** - Tag images by version, roll back by changing the tag
+- **Security** - No runtime filesystem modifications needed
+
+### Alternative: Mount additional PVCs
+
+For development or if you need runtime flexibility, you can mount additional PVCs for `/extensions` and custom module directories. This is more complex and not recommended for production — you lose reproducibility and risk version drift between deployments.
+
 ## Building the Container Image
 
 To build your own image:
