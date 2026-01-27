@@ -1,4 +1,3 @@
-[![Build and Push Container Image](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml/badge.svg)](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml)
 # SuiteCRM on OpenShift
 [![OpenShift](https://img.shields.io/badge/OpenShift-4.x-red?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
 [![SuiteCRM](https://img.shields.io/badge/SuiteCRM-8.x-blue?logo=salesforce)](https://suitecrm.com)
