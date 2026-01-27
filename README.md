@@ -5,7 +5,7 @@
 [![SCC](https://img.shields.io/badge/SCC-restricted-brightgreen)](https://docs.openshift.com/container-platform/latest/authentication/managing-security-context-constraints.html)
 [![MariaDB](https://img.shields.io/badge/MariaDB-10.x-blue?logo=mariadb)](https://mariadb.org)
 [![PHP](https://img.shields.io/badge/PHP-8.x-777BB4?logo=php&logoColor=white)](https://www.php.net)
-[![License](https://img.shields.io/badge/License-AGPLv3-blue)](https://www.gnu.org/licenses/agpl-3.0)
+[![Build and Push Container Image](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml/badge.svg)](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml)
 
 <a href="https://suitecrm.com">
 <img width="180px" height="41px" src="https://suitecrm.com/wp-content/uploads/2017/12/logo.png" align="right" />
