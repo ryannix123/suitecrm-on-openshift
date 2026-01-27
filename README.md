@@ -1,3 +1,4 @@
+[![Build and Push Container Image](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml/badge.svg)](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml)
 # SuiteCRM on OpenShift
 
 <a href="https://suitecrm.com">
