@@ -20,7 +20,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-SUITECRM_IMAGE="quay.io/ryan_nix/suitecrm-openshift:8.9.2"
+SUITECRM_IMAGE="quay.io/ryan_nix/suitecrm-openshift:8.10.1"
 MARIADB_IMAGE="quay.io/fedora/mariadb-118"
 REDIS_IMAGE="docker.io/redis:8-alpine"
 
@@ -151,9 +151,8 @@ metadata:
   labels:
     app: suitecrm
     app.kubernetes.io/part-of: suitecrm
-    component: cache
-  annotations:
     app.openshift.io/runtime: redis
+    component: cache
 spec:
   replicas: 1
   strategy:
@@ -316,9 +315,8 @@ metadata:
   labels:
     app: suitecrm
     app.kubernetes.io/part-of: suitecrm
-    component: database
-  annotations:
     app.openshift.io/runtime: mariadb
+    component: database
 spec:
   replicas: 1
   strategy:
@@ -515,9 +513,10 @@ metadata:
   labels:
     app: suitecrm
     app.kubernetes.io/part-of: suitecrm
+    app.openshift.io/runtime: php
     component: application
   annotations:
-    app.openshift.io/runtime: php
+    app.openshift.io/custom-icon: "https://suitecrm.com/wp-content/uploads/2017/12/logo_x2.png"
 spec:
   replicas: 1
   strategy:
