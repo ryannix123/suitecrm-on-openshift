@@ -1,20 +1,20 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # SuiteCRM 8 Container for OpenShift
-# Base: CentOS Stream 9 + Remi PHP 8.3 + nginx + PHP-FPM
+# Base: CentOS Stream 9 + Remi PHP 8.4 + nginx + PHP-FPM
 # Runs as non-root, OpenShift restricted SCC compatible
 # ═══════════════════════════════════════════════════════════════════════════════
 
 FROM quay.io/centos/centos:stream9
 
 LABEL maintainer="Ryan Nix <ryan.nix@gmail.com>" \
-      description="SuiteCRM 8.9 for OpenShift with nginx + PHP-FPM" \
-      version="8.9.2" \
+      description="SuiteCRM 8.10 for OpenShift with nginx + PHP-FPM" \
+      version="8.10.1" \
       io.k8s.description="SuiteCRM - Open Source CRM" \
-      io.k8s.display-name="SuiteCRM 8.9" \
+      io.k8s.display-name="SuiteCRM 8.10" \
       io.openshift.expose-services="8080:http" \
       io.openshift.tags="crm,suitecrm,php,nginx,symfony"
 
-ARG SUITECRM_VERSION=8.9.2
+ARG SUITECRM_VERSION=8.10.1
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Environment Variables
@@ -27,12 +27,12 @@ ENV SUITECRM_VERSION=${SUITECRM_VERSION} \
     PHP_MAX_INPUT_TIME=300
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Install packages from EPEL and Remi repos
+# Install packages from EPEL and Remi repos (PHP 8.4)
 # ─────────────────────────────────────────────────────────────────────────────
 RUN dnf -y install epel-release && \
     dnf -y install https://rpms.remirepo.net/enterprise/remi-release-9.rpm && \
     dnf -y module reset php && \
-    dnf -y module enable php:remi-8.3 && \
+    dnf -y module enable php:remi-8.4 && \
     dnf -y install --allowerasing \
         nginx \
         supervisor \
@@ -56,7 +56,7 @@ RUN dnf -y install epel-release && \
         php-ldap \
         php-soap \
         php-pecl-apcu \
-        php-pecl-redis5 \
+        php-pecl-redis6 \
         php-sodium \
         && \
     dnf clean all && \
@@ -85,10 +85,12 @@ RUN curl -fSL -o suitecrm.zip \
 # ─────────────────────────────────────────────────────────────────────────────
 # Custom vCard upload fix (increase limit from 30KB to 100MB)
 # ─────────────────────────────────────────────────────────────────────────────
-RUN mkdir -p /var/www/html/public/legacy/custom/include/MVC/View/tpls && \
-    sed 's/value="30000"/value="104857600"/' \
-        /var/www/html/public/legacy/include/MVC/View/tpls/Importvcard.tpl \
-        > /var/www/html/public/legacy/custom/include/MVC/View/tpls/Importvcard.tpl
+RUN if [ -f /var/www/html/public/legacy/include/MVC/View/tpls/Importvcard.tpl ]; then \
+        mkdir -p /var/www/html/public/legacy/custom/include/MVC/View/tpls && \
+        sed 's/value="30000"/value="104857600"/' \
+            /var/www/html/public/legacy/include/MVC/View/tpls/Importvcard.tpl \
+            > /var/www/html/public/legacy/custom/include/MVC/View/tpls/Importvcard.tpl; \
+    fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configure nginx for non-root operation
