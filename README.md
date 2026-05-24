@@ -1,12 +1,12 @@
 # SuiteCRM on OpenShift
 [![OpenShift](https://img.shields.io/badge/OpenShift-4.x-red?logo=redhatopenshift)](https://www.redhat.com/en/technologies/cloud-computing/openshift)
-[![SuiteCRM](https://img.shields.io/badge/SuiteCRM-8.x-blue?logo=salesforce)](https://suitecrm.com)
+[![SuiteCRM](https://img.shields.io/badge/SuiteCRM-8.10-blue?logo=salesforce)](https://suitecrm.com)
 [![SCC](https://img.shields.io/badge/SCC-restricted-brightgreen)](https://docs.openshift.com/container-platform/latest/authentication/managing-security-context-constraints.html)
 [![MariaDB](https://img.shields.io/badge/MariaDB-11-blue?logo=mariadb)](https://mariadb.org)
-[![PHP](https://img.shields.io/badge/PHP-8.x-777BB4?logo=php&logoColor=white)](https://www.php.net)
+[![PHP](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)](https://www.php.net)
 [![CentOS](https://img.shields.io/badge/CentOS-Stream%209-purple?logo=centos&logoColor=white)](https://www.centos.org)
 [![Quay.io](https://img.shields.io/badge/Quay.io-Container-red?logo=redhat&logoColor=white)](https://quay.io)
-[![Build and Push Container Image](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml/badge.svg)](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml)
+[![Build and Push Container Image](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build.yml/badge.svg)](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build.yml)
 
 <a href="https://suitecrm.com">
 <img width="180px" height="41px" src="https://suitecrm.com/wp-content/uploads/2017/12/logo.png" align="right" />
@@ -16,11 +16,12 @@ Deploy [SuiteCRM 8](https://suitecrm.com/) on Red Hat OpenShift with automatic i
 
 ## Features
 
-- **Automated Installation** - No manual setup wizard required; deploys ready to use
-- **OpenShift Optimized** - Runs as non-root, compatible with restricted SCC
-- **Persistent Storage** - Database, uploads, and configuration survive restarts
-- **Production Ready** - Includes MariaDB database, Redis caching, and scheduled tasks
-- **Secure by Default** - TLS-enabled routes, generated credentials, security headers
+- **Automated Installation** — No manual setup wizard; deploys ready to use via the [CLI installer](https://docs.suitecrm.com/8.x/admin/installation-guide/running-the-cli-installer/)
+- **OpenShift Optimized** — Runs as non-root, compatible with restricted SCC
+- **Persistent Storage** — Database, uploads, and configuration survive restarts
+- **Production Ready** — Includes MariaDB database, Redis caching, and scheduled tasks
+- **Secure by Default** — TLS-enabled routes, generated credentials, security headers
+- **Weekly CI/CD Builds** — Automated container builds with new SuiteCRM version detection
 
 ## Quick Start
 
@@ -37,7 +38,7 @@ The script will output the admin credentials and URL when complete. Credentials 
 
 ## Requirements
 
-- OpenShift 4.x cluster (or Red Hat Developer Sandbox)
+- OpenShift 4.x cluster (or [Red Hat Developer Sandbox](https://developers.redhat.com/developer-sandbox))
 - `oc` CLI logged into your cluster
 - Sufficient quota for 3 pods and ~31Gi storage
 
@@ -52,7 +53,7 @@ The script will output the admin credentials and URL when complete. Credentials 
                           ▼
 ┌─────────────────────────────────────────────────────────┐
 │                   SuiteCRM Pod                           │
-│              nginx + PHP-FPM 8.3                         │
+│              nginx + PHP-FPM 8.4                         │
 │                  (Port 8080)                             │
 └──────────┬─────────────────────────────────┬────────────┘
            │                             │
@@ -68,7 +69,7 @@ The script will output the admin credentials and URL when complete. Credentials 
 
 | Component | Image | Purpose |
 |-----------|-------|---------|
-| SuiteCRM | `quay.io/ryan_nix/suitecrm-openshift:8.9.2` | CRM application |
+| SuiteCRM | `quay.io/ryan_nix/suitecrm-openshift:8.10.1` | CRM application (PHP 8.4) |
 | MariaDB | `quay.io/fedora/mariadb-118` | Database |
 | Redis | `docker.io/redis:8-alpine` | Session/cache store |
 | Scheduler | CronJob (same image) | Background tasks |
@@ -127,6 +128,25 @@ The SuiteCRM container accepts these environment variables:
 | `mariadb-data` | 10Gi | Database files |
 | `suitecrm-data` | 20Gi | Uploads, cache, config, customizations |
 | `redis-data` | 1Gi | Redis persistence |
+
+## CI/CD
+
+A GitHub Actions workflow (`.github/workflows/build.yml`) automates container image builds:
+
+- **Weekly builds** every Monday at 6:00 AM UTC
+- **Auto-detects** new SuiteCRM releases via the GitHub API
+- **Multi-tag push** to Quay.io: version (`8.10.1`), major.minor (`8.10`), and `latest`
+- **Auto-commits** version bumps back to the repository
+- **Manual trigger** with optional version override via `workflow_dispatch`
+
+### Setup
+
+Add two repository secrets in **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+|--------|-------|
+| `QUAY_USERNAME` | Your Quay.io username |
+| `QUAY_PASSWORD` | Your Quay.io encrypted password or [robot account token](https://docs.quay.io/glossary/robot-accounts.html) |
 
 ## Customizations
 
@@ -192,21 +212,21 @@ For production deployments with extensions or custom modules:
 
 5. **Build and push your image**:
    ```bash
-   podman build --platform linux/amd64 -t quay.io/your-username/suitecrm-custom:8.9.2 .
-   podman push quay.io/your-username/suitecrm-custom:8.9.2
+   podman build --platform linux/amd64 -t quay.io/your-username/suitecrm-custom:8.10.1 .
+   podman push quay.io/your-username/suitecrm-custom:8.10.1
    ```
 
 6. **Update `deploy-suitecrm.sh`** to use your image:
    ```bash
-   SUITECRM_IMAGE="quay.io/your-username/suitecrm-custom:8.9.2"
+   SUITECRM_IMAGE="quay.io/your-username/suitecrm-custom:8.10.1"
    ```
 
 ### Why this approach?
 
-- **Reproducibility** - Every deployment is identical, built from the same image
-- **CI/CD friendly** - Automate builds via GitHub Actions, Tekton, etc.
-- **Rollback capability** - Tag images by version, roll back by changing the tag
-- **Security** - No runtime filesystem modifications needed
+- **Reproducibility** — Every deployment is identical, built from the same image
+- **CI/CD friendly** — Automate builds via GitHub Actions, Tekton, etc.
+- **Rollback capability** — Tag images by version, roll back by changing the tag
+- **Security** — No runtime filesystem modifications needed
 
 ### Alternative: Mount additional PVCs
 
@@ -218,10 +238,10 @@ To build your own image:
 
 ```bash
 # Build for OpenShift (linux/amd64)
-podman build --platform linux/amd64 -t quay.io/your-username/suitecrm-openshift:8.9.2 -f Containerfile .
+podman build --platform linux/amd64 -t quay.io/your-username/suitecrm-openshift:8.10.1 -f Containerfile .
 
 # Push to registry
-podman push quay.io/your-username/suitecrm-openshift:8.9.2
+podman push quay.io/your-username/suitecrm-openshift:8.10.1
 ```
 
 Update `SUITECRM_IMAGE` in `deploy-suitecrm.sh` to use your image.
@@ -238,6 +258,7 @@ Update `SUITECRM_IMAGE` in `deploy-suitecrm.sh` to use your image.
 | `www.conf` | PHP-FPM pool configuration |
 | `99-suitecrm.ini` | PHP settings |
 | `supervisord.conf` | Process manager configuration |
+| `.github/workflows/build.yml` | CI/CD pipeline for weekly builds |
 
 ## Troubleshooting
 
@@ -291,5 +312,6 @@ Pull requests welcome! Please test changes on OpenShift before submitting.
 ## Resources
 
 - [SuiteCRM Documentation](https://docs.suitecrm.com/)
+- [SuiteCRM 8.10 Release Notes](https://docs.suitecrm.com/8.x/admin/releases/8.10/)
 - [SuiteCRM 8 Installation Guide](https://docs.suitecrm.com/8.x/admin/installation-guide/)
 - [OpenShift Documentation](https://docs.openshift.com/)
