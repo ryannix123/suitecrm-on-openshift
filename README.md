@@ -6,7 +6,7 @@
 [![PHP](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)](https://www.php.net)
 [![CentOS](https://img.shields.io/badge/CentOS-Stream%209-purple?logo=centos&logoColor=white)](https://www.centos.org)
 [![Quay.io](https://img.shields.io/badge/Quay.io-Container-red?logo=redhat&logoColor=white)](https://quay.io)
-[![Build and Push Container Image](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build.yml/badge.svg)](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build.yml)
+[![Build and Push SuiteCRM Container](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml/badge.svg)](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml)
 
 <a href="https://suitecrm.com">
 <img width="180px" height="41px" src="https://suitecrm.com/wp-content/uploads/2017/12/logo.png" align="right" />
