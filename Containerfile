@@ -1,10 +1,10 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # SuiteCRM 8 Container for OpenShift
-# Base: CentOS Stream 9 + Remi PHP 8.4 + nginx + PHP-FPM
+# Base: CentOS Stream 10 + Remi PHP 8.4 + nginx + PHP-FPM
 # Runs as non-root, OpenShift restricted SCC compatible
 # ═══════════════════════════════════════════════════════════════════════════════
 
-FROM quay.io/centos/centos:stream9
+FROM quay.io/centos/centos:stream10
 
 LABEL maintainer="Ryan Nix <ryan.nix@gmail.com>" \
       description="SuiteCRM 8.10 for OpenShift with nginx + PHP-FPM" \
@@ -29,8 +29,9 @@ ENV SUITECRM_VERSION=${SUITECRM_VERSION} \
 # ─────────────────────────────────────────────────────────────────────────────
 # Install packages from EPEL and Remi repos (PHP 8.4)
 # ─────────────────────────────────────────────────────────────────────────────
-RUN dnf -y install epel-release && \
-    dnf -y install https://rpms.remirepo.net/enterprise/remi-release-9.rpm && \
+RUN dnf -y install \
+        https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm \
+        https://rpms.remirepo.net/enterprise/remi-release-10.rpm && \
     dnf -y module reset php && \
     dnf -y module enable php:remi-8.4 && \
     dnf -y install --allowerasing \
