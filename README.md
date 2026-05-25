@@ -4,7 +4,7 @@
 [![SCC](https://img.shields.io/badge/SCC-restricted-brightgreen)](https://docs.openshift.com/container-platform/latest/authentication/managing-security-context-constraints.html)
 [![MariaDB](https://img.shields.io/badge/MariaDB-11-blue?logo=mariadb)](https://mariadb.org)
 [![PHP](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)](https://www.php.net)
-[![CentOS](https://img.shields.io/badge/CentOS-Stream%209-purple?logo=centos&logoColor=white)](https://www.centos.org)
+[![CentOS](https://img.shields.io/badge/CentOS-Stream%2010-purple?logo=centos&logoColor=white)](https://www.centos.org)
 [![Quay.io](https://img.shields.io/badge/Quay.io-Container-red?logo=redhat&logoColor=white)](https://quay.io)
 [![Build and Push SuiteCRM Container](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml/badge.svg)](https://github.com/ryannix123/suitecrm-on-openshift/actions/workflows/build-image.yml)
 
@@ -13,6 +13,8 @@
 </a>
 
 Deploy [SuiteCRM 8](https://suitecrm.com/) on Red Hat OpenShift with automatic installation, MariaDB, and Redis.
+
+> **No cluster? No problem.** The [Red Hat Developer Sandbox](https://developers.redhat.com/developer-sandbox) gives you a free OpenShift environment — no credit card, no expiration. Clone this repo, run the deploy script, and you'll have a working CRM in five minutes.
 
 ## Features
 
@@ -69,7 +71,7 @@ The script will output the admin credentials and URL when complete. Credentials 
 
 | Component | Image | Purpose |
 |-----------|-------|---------|
-| SuiteCRM | `quay.io/ryan_nix/suitecrm-openshift:8.10.1` | CRM application (PHP 8.4) |
+| SuiteCRM | `quay.io/ryan_nix/suitecrm-openshift:8.10.1` | CRM application (PHP 8.4, CentOS Stream 10) |
 | MariaDB | `quay.io/fedora/mariadb-118` | Database |
 | Redis | `docker.io/redis:8-alpine` | Session/cache store |
 | Scheduler | CronJob (same image) | Background tasks |
@@ -104,6 +106,43 @@ oc logs -f deployment/mariadb
 ./deploy-suitecrm.sh cleanup
 ```
 
+## Upgrading
+
+Your data lives on persistent volumes, completely independent of the container image. Upgrading the SuiteCRM container is safe and straightforward.
+
+### Update to a specific version
+
+```bash
+oc set image deployment/suitecrm suitecrm=quay.io/ryan_nix/suitecrm-openshift:8.10.2
+
+# Watch the rollout
+oc rollout status deployment/suitecrm
+```
+
+### Pull the latest weekly build
+
+```bash
+oc rollout restart deployment/suitecrm
+```
+
+### Roll back
+
+```bash
+oc rollout undo deployment/suitecrm
+```
+
+### What's preserved across upgrades
+
+| Data | Storage | Safe? |
+|------|---------|-------|
+| Database (all CRM data) | MariaDB PVC | ✅ |
+| Uploaded documents | suitecrm-data PVC | ✅ |
+| Configuration (config.php) | suitecrm-data PVC | ✅ |
+| Studio customizations | suitecrm-data PVC | ✅ |
+| Admin credentials | No change | ✅ |
+
+On startup, the entrypoint checks for an existing `config.php` on the persistent volume. If found, it restores the config and skips installation. Your database credentials, admin password, and site URL all carry over automatically.
+
 ## Configuration
 
 ### Environment Variables
@@ -131,7 +170,7 @@ The SuiteCRM container accepts these environment variables:
 
 ## CI/CD
 
-A GitHub Actions workflow (`.github/workflows/build.yml`) automates container image builds:
+A GitHub Actions workflow (`.github/workflows/build-image.yml`) automates container image builds:
 
 - **Weekly builds** every Monday at 6:00 AM UTC
 - **Auto-detects** new SuiteCRM releases via the GitHub API
@@ -258,7 +297,7 @@ Update `SUITECRM_IMAGE` in `deploy-suitecrm.sh` to use your image.
 | `www.conf` | PHP-FPM pool configuration |
 | `99-suitecrm.ini` | PHP settings |
 | `supervisord.conf` | Process manager configuration |
-| `.github/workflows/build.yml` | CI/CD pipeline for weekly builds |
+| `.github/workflows/build-image.yml` | CI/CD pipeline for weekly builds |
 
 ## Troubleshooting
 
