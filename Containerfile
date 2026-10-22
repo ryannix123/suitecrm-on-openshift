@@ -2,6 +2,9 @@
 # SuiteCRM 8 Container for OpenShift
 # Base: CentOS Stream 10 + Remi PHP 8.4 + nginx + PHP-FPM
 # Runs as non-root, OpenShift restricted SCC compatible
+#
+# Security: requires PHP >= 8.4.27 (PHP2Shell, CVE-2026-109618 / CVE-2026-109619).
+# The build fails if Remi serves an older PHP.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 FROM quay.io/centos/centos:stream10
@@ -29,6 +32,9 @@ ENV SUITECRM_VERSION=${SUITECRM_VERSION} \
 # ─────────────────────────────────────────────────────────────────────────────
 # Install packages from EPEL and Remi repos (PHP 8.4)
 # ─────────────────────────────────────────────────────────────────────────────
+# Make dnf tolerant of overloaded mirrors (EPEL/Remi under heavy load).
+RUN printf 'retries=10\ntimeout=60\nmax_parallel_downloads=3\n' >> /etc/dnf/dnf.conf
+
 RUN dnf -y install \
         https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm \
         https://rpms.remirepo.net/enterprise/remi-release-10.rpm && \
@@ -62,6 +68,13 @@ RUN dnf -y install \
         && \
     dnf clean all && \
     rm -rf /var/cache/dnf
+
+# Security guard: refuse to ship PHP without the PHP2Shell fixes
+# (CVE-2026-109618 / CVE-2026-109619, fixed in 8.4.27 on the 8.4 branch).
+# If this fails, Remi hasn't published the patched build yet.
+RUN php -r 'exit(version_compare(PHP_VERSION, "8.4.27", "<") ? 1 : 0);' \
+    || { echo "PHP $(php -r 'echo PHP_VERSION;') is unpatched (needs >= 8.4.27), wait for Remi"; exit 1; } \
+    && echo "✓ PHP $(php -r 'echo PHP_VERSION;') includes PHP2Shell fixes"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Download and install SuiteCRM 8

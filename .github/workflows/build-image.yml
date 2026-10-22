@@ -24,7 +24,9 @@ on:
       - 'www.conf'
       - '99-suitecrm.ini'
       - 'supervisord.conf'
-      - '.github/workflows/build.yml'
+      # Was 'build.yml', which doesn't exist, so edits to this workflow never
+      # triggered a build.
+      - '.github/workflows/build-image.yml'
 
 env:
   REGISTRY: quay.io
@@ -66,8 +68,11 @@ jobs:
           if [ "$LATEST" != "$CURRENT" ]; then
             echo "New version detected!"
             echo "should_build=true" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "Rebuilding current version (scheduled/push build)"
+          elif [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Push, weekly schedule, and manual runs all rebuild the current
+            # version. A manual run without a version input used to skip here,
+            # which made the "Run workflow" button useless for security rebuilds.
+            echo "Rebuilding current version (${{ github.event_name }})"
             echo "should_build=true" >> $GITHUB_OUTPUT
           else
             echo "No new version, skipping build"
@@ -102,6 +107,7 @@ jobs:
           MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "major_minor=${MAJOR_MINOR}" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +%Y%m%d)" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -114,10 +120,29 @@ jobs:
             SUITECRM_VERSION=${{ steps.vars.outputs.version }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version }}-${{ steps.vars.outputs.date }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.major_minor }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+          # The weekly rebuild exists to pick up OS and PHP fixes, but a cached
+          # dnf layer only reruns when the lines above it change -- so with the
+          # GHA cache, "rebuilt" images kept last month's PHP. Re-pull the base
+          # and skip the cache on every build.
+          pull: true
+          no-cache: true
+
+      # Report what PHP actually shipped. The Containerfile's guard already
+      # failed the build on an unpatched PHP; this makes it visible in the
+      # run summary without pulling anything.
+      - name: Report shipped PHP version
+        id: php
+        run: |
+          PHP_VER=$(docker run --rm --entrypoint php \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version }} \
+            -r 'echo PHP_VERSION;')
+          echo "✓ Image ships PHP ${PHP_VER}"
+          echo "version=${PHP_VER}" >> $GITHUB_OUTPUT
 
       - name: Update Containerfile version
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -143,5 +168,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **SuiteCRM Version:** ${{ steps.vars.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tags:** \`${{ steps.vars.outputs.version }}\`, \`${{ steps.vars.outputs.major_minor }}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **PHP:** ${{ steps.php.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tags:** \`${{ steps.vars.outputs.version }}\`, \`${{ steps.vars.outputs.version }}-${{ steps.vars.outputs.date }}\`, \`${{ steps.vars.outputs.major_minor }}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Platform:** linux/amd64" >> $GITHUB_STEP_SUMMARY
