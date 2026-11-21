@@ -3,7 +3,8 @@
 # Base: CentOS Stream 10 + Remi PHP 8.4 + nginx + PHP-FPM
 # Runs as non-root, OpenShift restricted SCC compatible
 #
-# Security: requires PHP >= 8.4.27 (PHP2Shell, CVE-2026-109618 / CVE-2026-109619).
+# Security: requires PHP >= 8.4.28: PHP2Shell (CVE-2026-109618 / CVE-2026-109619) plus the
+# November 19, 2026 release: 7 critical fixes, incl. CVE-2026-129182 / CVE-2026-129481 (gaps in the PHP2Shell fix) and CVE-2026-129289 (PHP-FPM request smuggling).
 # The build fails if Remi serves an older PHP.
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -70,10 +71,11 @@ RUN dnf -y install \
     rm -rf /var/cache/dnf
 
 # Security guard: refuse to ship PHP without the PHP2Shell fixes
-# (CVE-2026-109618 / CVE-2026-109619, fixed in 8.4.27 on the 8.4 branch).
+# (CVE-2026-109618 / CVE-2026-109619) and the November 2026 follow-ups,
+# all fixed in 8.4.28 on the 8.4 branch.
 # If this fails, Remi hasn't published the patched build yet.
-RUN php -r 'exit(version_compare(PHP_VERSION, "8.4.27", "<") ? 1 : 0);' \
-    || { echo "PHP $(php -r 'echo PHP_VERSION;') is unpatched (needs >= 8.4.27), wait for Remi"; exit 1; } \
+RUN php -r 'exit(version_compare(PHP_VERSION, "8.4.28", "<") ? 1 : 0);' \
+    || { echo "PHP $(php -r 'echo PHP_VERSION;') is unpatched (needs >= 8.4.28), wait for Remi"; exit 1; } \
     && echo "✓ PHP $(php -r 'echo PHP_VERSION;') includes PHP2Shell fixes"
 
 # ─────────────────────────────────────────────────────────────────────────────
