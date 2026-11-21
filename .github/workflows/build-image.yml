@@ -31,6 +31,11 @@ on:
 env:
   REGISTRY: quay.io
   IMAGE_NAME: ryan_nix/suitecrm-openshift
+  # How long tags live on Quay. Every tag except `latest` carries
+  # quay.expires-after, so Quay holds only two weeks of builds; a current
+  # version tag is re-pushed weekly and never lapses. Expired tags sit in
+  # Quay's time machine for 14 days before GC. Same scheme as worldmonitor-redhat.
+  QUAY_TAG_TTL: 14d
 
 jobs:
   check-version:
@@ -110,6 +115,7 @@ jobs:
           echo "date=$(date -u +%Y%m%d)" >> $GITHUB_OUTPUT
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -118,11 +124,13 @@ jobs:
           push: true
           build-args: |
             SUITECRM_VERSION=${{ steps.vars.outputs.version }}
+          # Only the permanent tag here. The expiring tags are added below as
+          # a separate, annotated manifest list.
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version }}-${{ steps.vars.outputs.date }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.major_minor }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          # Guarantees the pushed artifact is an index (image + provenance),
+          # which the expiring tags below are copied from.
+          provenance: mode=min
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
           # The weekly rebuild exists to pick up OS and PHP fixes, but a cached
@@ -131,6 +139,19 @@ jobs:
           # and skip the cache on every build.
           pull: true
           no-cache: true
+
+      # Version, dated and major.minor tags: a copy of the index just pushed,
+      # annotated with quay.expires-after. The annotation sits on this copy
+      # only, so `latest` (the original index) never expires.
+      - name: Push expiring tags
+        run: |
+          DEST=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          docker buildx imagetools create \
+            --annotation "index:quay.expires-after=${QUAY_TAG_TTL}" \
+            -t ${DEST}:${{ steps.vars.outputs.version }} \
+            -t ${DEST}:${{ steps.vars.outputs.version }}-${{ steps.vars.outputs.date }} \
+            -t ${DEST}:${{ steps.vars.outputs.major_minor }} \
+            ${DEST}@${{ steps.build.outputs.digest }}
 
       # Report what PHP actually shipped. The Containerfile's guard already
       # failed the build on an unpatched PHP; this makes it visible in the
