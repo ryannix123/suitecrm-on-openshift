@@ -31,8 +31,8 @@ on:
 env:
   REGISTRY: quay.io
   IMAGE_NAME: ryan_nix/suitecrm-openshift
-  # How long tags live on Quay. Every tag except `latest` carries
-  # quay.expires-after, so Quay holds only two weeks of builds; a current
+  # How long tags live on Quay. Every tag except `latest` points at a copy of
+  # the image labeled quay.expires-after (Quay ignores manifest-list annotations), so Quay holds only two weeks of builds; a current
   # version tag is re-pushed weekly and never lapses. Expired tags sit in
   # Quay's time machine for 14 days before GC. Same scheme as worldmonitor-redhat.
   QUAY_TAG_TTL: 14d
@@ -124,13 +124,10 @@ jobs:
           push: true
           build-args: |
             SUITECRM_VERSION=${{ steps.vars.outputs.version }}
-          # Only the permanent tag here. The expiring tags are added below as
-          # a separate, annotated manifest list.
+          # Only the permanent tag here. The expiring tags are pushed below
+          # from a labeled copy of this image.
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          # Guarantees the pushed artifact is an index (image + provenance),
-          # which the expiring tags below are copied from.
-          provenance: mode=min
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
           # The weekly rebuild exists to pick up OS and PHP fixes, but a cached
@@ -140,18 +137,30 @@ jobs:
           pull: true
           no-cache: true
 
-      # Version, dated and major.minor tags: a copy of the index just pushed,
-      # annotated with quay.expires-after. The annotation sits on this copy
-      # only, so `latest` (the original index) never expires.
-      - name: Push expiring tags
+      # Version, dated and major.minor tags point at a copy of the image that
+      # differs only by the quay.expires-after label: same layers, new config,
+      # built in seconds. Quay expires a tag from the labels of the image it
+      # points at (it ignores manifest-list annotations), so `latest` keeps the
+      # unlabeled original and never expires.
+      - name: Write expiring-copy Containerfile
         run: |
-          DEST=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          docker buildx imagetools create \
-            --annotation "index:quay.expires-after=${QUAY_TAG_TTL}" \
-            -t ${DEST}:${{ steps.vars.outputs.version }} \
-            -t ${DEST}:${{ steps.vars.outputs.version }}-${{ steps.vars.outputs.date }} \
-            -t ${DEST}:${{ steps.vars.outputs.major_minor }} \
-            ${DEST}@${{ steps.build.outputs.digest }}
+          mkdir -p "${{ runner.temp }}/expiring"
+          printf 'FROM %s@%s\nLABEL quay.expires-after=%s\n' \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" "${{ steps.build.outputs.digest }}" "${QUAY_TAG_TTL}" \
+            > "${{ runner.temp }}/expiring/Containerfile"
+
+      - name: Push expiring tags
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ runner.temp }}/expiring
+          file: ${{ runner.temp }}/expiring/Containerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version }}-${{ steps.vars.outputs.date }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.major_minor }}
 
       # Report what PHP actually shipped. The Containerfile's guard already
       # failed the build on an unpatched PHP; this makes it visible in the
